@@ -12,6 +12,10 @@ struct Boid {
 
 using Boids = std::array<Boid, 40>;
 
+template<class T>
+constexpr T kPi = T(3.1415926535897932385);
+
+
 void draw_boids(const Boids& boids, sf::RenderWindow& window) {
   for (const auto& boid : boids) {
     const int kBoidCircleRadius = boid.size;
@@ -40,11 +44,11 @@ void draw_boids(const Boids& boids, sf::RenderWindow& window) {
 Boids generate_random_boids(const sf::Window& window) {
   static std::random_device rd;
   static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> random_angle(-180, 179);
+  static std::uniform_int_distribution<> random_color_channel_value(50, 255);
   const sf::Vector2u& kWindowSize = window.getSize();
   std::uniform_int_distribution<> random_pos_x(0, kWindowSize.x);
   std::uniform_int_distribution<> random_pos_y(0, kWindowSize.y);
-  std::uniform_int_distribution<> random_angle(-180, 179);
-  std::uniform_int_distribution<> random_color_channel_value(50, 255);
   Boids boids;
 
   for (auto& boid : boids) {
@@ -57,28 +61,58 @@ Boids generate_random_boids(const sf::Window& window) {
   return boids;
 }
 
+template<class T>
+T distance_2d(const sf::Vector2<T>& a, const sf::Vector2<T>& b) {
+  sf::Vector2<T> diff = a - b;
+  return std::sqrt(diff.x * diff.x + diff.y * diff.y);
+}
+
+template<class T>
+T rad2deg(T rad) {
+  return (rad * 180) / kPi<T>;
+}
+
 void update_boids(Boids& boids, const sf::Time& dt, const sf::Window& window) {
   const sf::Vector2u& kWindowSize = window.getSize();
   const float kDeltaTimeSeconds = dt.asSeconds();
   for (auto& boid : boids) {
-    sf::Transform rotation;
-    rotation.rotate(boid.angle);
-    const float kDeltaSpeed = boid.speed * kDeltaTimeSeconds;
-    boid.position += rotation.transformPoint(0, -kDeltaSpeed);
-    if (boid.position.x < 0) {
-      boid.position.x = kWindowSize.x;
+    /** Update position */
+    {
+      sf::Transform rotation;
+      rotation.rotate(boid.angle);
+      const float kDeltaSpeed = boid.speed * kDeltaTimeSeconds;
+      boid.position += rotation.transformPoint(0, -kDeltaSpeed);
+      if (boid.position.x < 0) {
+        boid.position.x = kWindowSize.x;
+      }
+
+      if (boid.position.x > kWindowSize.x) {
+        boid.position.x = 0;
+      }
+
+      if (boid.position.y < 0) {
+        boid.position.y = kWindowSize.y;
+      }
+
+      if (boid.position.y > kWindowSize.y) {
+        boid.position.y = 0;
+      }
     }
 
-    if (boid.position.x > kWindowSize.x) {
-      boid.position.x = 0;
-    }
+    /** Cohesion */
+    {
+      /** Calculate average angle */
+      int boids_in_area = 0;
+      const float kAccumulatedAngle =
+        std::accumulate(boids.begin(), boids.end(), 0.0f, [&](float result, const auto& other_boid) {
+            if (distance_2d(boid.position, other_boid.position) < 3 * boid.size) {
+              ++boids_in_area;
+              return result + other_boid.angle;
+            }
 
-    if (boid.position.y < 0) {
-      boid.position.y = kWindowSize.y;
-    }
-
-    if (boid.position.y > kWindowSize.y) {
-      boid.position.y = 0;
+            return result;
+        });
+      boid.angle = kAccumulatedAngle / boids_in_area;
     }
   }
 }
