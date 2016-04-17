@@ -8,6 +8,9 @@ struct Boid {
   sf::Color color = sf::Color::White;
   int size = 10;
   int speed = 200;
+  const int kLocalFlockmateDetectionDistanceFactor = 10;
+  const int kLocalFlockmatesCohesionDistanceFactor = 5;
+  const int kLocalFlockmatesSeparationDistanceFactor = 2;
 };
 
 using Boids = std::array<Boid, 40>;
@@ -99,20 +102,60 @@ void update_boids(Boids& boids, const sf::Time& dt, const sf::Window& window) {
       }
     }
 
-    /** Cohesion */
+    const std::vector<Boid> kLocalFlockmates = [&boids, &boid] {
+      std::vector<Boid> result;
+      std::copy_if(boids.begin(), boids.end(), std::back_inserter(result), [&boid](const auto& local_flockmate) {
+        return distance_2d(boid.position, local_flockmate.position) <
+               boid.kLocalFlockmateDetectionDistanceFactor * boid.size;
+      });
+      return result;
+    }();
+
+    if (kLocalFlockmates.size() == 1) {
+      continue;
+    }
+
+
+    /** Alignment */
     {
       /** Calculate average angle */
-      int boids_in_area = 0;
-      const float kAccumulatedAngle =
-        std::accumulate(boids.begin(), boids.end(), 0.0f, [&](float result, const auto& other_boid) {
-            if (distance_2d(boid.position, other_boid.position) < 3 * boid.size) {
-              ++boids_in_area;
-              return result + other_boid.angle;
-            }
+      const float kLocalFlockmateAverageAngle =
+        std::accumulate(
+          kLocalFlockmates.begin(),
+          kLocalFlockmates.end(),
+          0.0f,
+          [&](float result, const auto& local_flockmate) {
+            return result + local_flockmate.angle / kLocalFlockmates.size();
+          }
+        );
+      boid.angle = kLocalFlockmateAverageAngle;
+    }
 
-            return result;
-        });
-      boid.angle = kAccumulatedAngle / boids_in_area;
+    const sf::Vector2f& kLocalFlockmateCenterOfMass =
+      std::accumulate(
+        kLocalFlockmates.begin(),
+        kLocalFlockmates.end(),
+        sf::Vector2f(),
+        [&](auto result, const auto& local_flockmate) {
+          result.x += local_flockmate.position.x / kLocalFlockmates.size();
+          result.y += local_flockmate.position.y / kLocalFlockmates.size();
+          return result;
+        }
+      );
+
+    const float kBoidToCenterOfMassAngle =
+      rad2deg(std::atan2(kLocalFlockmateCenterOfMass.y, kLocalFlockmateCenterOfMass.x) -
+              std::atan2(boid.position.y, boid.position.x));
+    /** Cohesion */
+    if (distance_2d(boid.position, kLocalFlockmateCenterOfMass) >
+        boid.kLocalFlockmatesCohesionDistanceFactor * boid.size) {
+      boid.angle = kBoidToCenterOfMassAngle;
+    }
+
+    /** Separation */
+    if (distance_2d(boid.position, kLocalFlockmateCenterOfMass) <
+        boid.kLocalFlockmatesSeparationDistanceFactor * boid.size) {
+      boid.angle = kBoidToCenterOfMassAngle + 180;
     }
   }
 }
