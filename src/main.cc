@@ -2,18 +2,77 @@
 #include <random>
 #include <SFML/Graphics.hpp>
 
-struct Boid {
-  sf::Vector2f position;
-  float angle = 0;
-  sf::Color color = sf::Color::White;
-  int size = 10;
-  int speed = 200;
-  const int kLocalFlockmateDetectionDistanceFactor = 10;
-  const int kLocalFlockmatesCohesionDistanceFactor = 5;
-  const int kLocalFlockmatesSeparationDistanceFactor = 2;
-};
-
+class Boid;
 using Boids = std::array<Boid, 40>;
+
+class Boid {
+ public:
+  Boid() = default;
+  Boid(const sf::Vector2f& pos, float rot, const sf::Color& col) : pos_(pos), rot_(rot), col_(col) {}
+  Boid(const Boid&) = default;
+  Boid(Boid&&) = default;
+  Boid& operator=(const Boid&) = default;
+  Boid& operator=(Boid&&) = default;
+
+  /**
+   * Update boid.
+   *
+   * /param dt Delta time in seconds.
+   * /param boids All boids.
+   * /param window_size Window size.
+   */
+  void update(float dt, const Boids& boids, const sf::Vector2u& window_size) {
+    /** Update position */
+    {
+      sf::Transform rotation;
+      rotation.rotate(rot_);
+      const float kDeltaSpeed = move_speed_ * dt;
+      pos_ += rotation.transformPoint(0, -kDeltaSpeed);
+      if (pos_.x < 0) {
+        pos_.x = window_size.x;
+      }
+
+      if (pos_.x > window_size.x) {
+        pos_.x = 0;
+      }
+
+      if (pos_.y < 0) {
+        pos_.y = window_size.y;
+      }
+
+      if (pos_.y > window_size.y) {
+        pos_.y = 0;
+      }
+    }
+  }
+
+  sf::Vector2f position() const {
+    return pos_;
+  }
+
+  float rotation() const {
+    return rot_;
+  }
+
+  sf::Color color() const {
+    return col_;
+  }
+
+  int size() const {
+    return size_;
+  }
+
+  int view_distance() const {
+    return size_ * kViewDistanceFactor;
+  }
+ private:
+  sf::Vector2f pos_;
+  float rot_ = 0;
+  sf::Color col_ = sf::Color::White;
+  int size_ = 10;
+  int move_speed_ = 200;
+  int kViewDistanceFactor = 3;
+};
 
 template<class T>
 constexpr T kPi = T(3.1415926535897932385);
@@ -21,24 +80,38 @@ constexpr T kPi = T(3.1415926535897932385);
 
 void draw_boids(const Boids& boids, sf::RenderWindow& window) {
   for (const auto& boid : boids) {
-    const int kBoidCircleRadius = boid.size;
+    const int kBoidCircleRadius = boid.size();
+    const int kBoidViewRadius = boid.view_distance();
 
+    /** View distance */
     {
-      sf::CircleShape circle(kBoidCircleRadius, 6);
-      circle.setOrigin(kBoidCircleRadius, kBoidCircleRadius);
-      circle.rotate(boid.angle);
-      circle.move(boid.position.x, boid.position.y);
-      circle.setFillColor(boid.color);
+      sf::CircleShape circle(kBoidViewRadius);
+      circle.setOrigin(kBoidViewRadius, kBoidViewRadius);
+      circle.move(boid.position());
+      sf::Color color = boid.color();
+      color.a = 32;
+      circle.setFillColor(color);
       window.draw(circle);
     }
 
+    /** Boid body */
+    {
+      sf::CircleShape circle(kBoidCircleRadius, 6);
+      circle.setOrigin(kBoidCircleRadius, kBoidCircleRadius);
+      circle.rotate(boid.rotation());
+      circle.move(boid.position());
+      circle.setFillColor(boid.color());
+      window.draw(circle);
+    }
+
+    /** Boid direction indicator */
     {
       const int kLineWidth = kBoidCircleRadius / 4;
       sf::RectangleShape line(sf::Vector2f(kLineWidth, kBoidCircleRadius * 2));
       line.setOrigin(kLineWidth / 2, kBoidCircleRadius * 2);
-      line.rotate(boid.angle);
-      line.move(boid.position.x , boid.position.y);
-      line.setFillColor(boid.color);
+      line.rotate(boid.rotation());
+      line.move(boid.position());
+      line.setFillColor(boid.color());
       window.draw(line);
     }
   }
@@ -47,18 +120,18 @@ void draw_boids(const Boids& boids, sf::RenderWindow& window) {
 Boids generate_random_boids(const sf::Window& window) {
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> random_angle(-180, 179);
+  static std::uniform_int_distribution<> random_rotation(0, 359);
   static std::uniform_int_distribution<> random_color_channel_value(50, 255);
-  const sf::Vector2u& kWindowSize = window.getSize();
-  std::uniform_int_distribution<> random_pos_x(0, kWindowSize.x);
-  std::uniform_int_distribution<> random_pos_y(0, kWindowSize.y);
+  const sf::Vector2u& window_size = window.getSize();
+  std::uniform_int_distribution<> random_pos_x(0, window_size.x);
+  std::uniform_int_distribution<> random_pos_y(0, window_size.y);
   Boids boids;
 
   for (auto& boid : boids) {
-    boid.position = sf::Vector2f(random_pos_x(gen), random_pos_y(gen));
-    boid.angle = random_angle(gen);
-    boid.color =
-      sf::Color(random_color_channel_value(gen), random_color_channel_value(gen), random_color_channel_value(gen));
+    boid = Boid(sf::Vector2f(random_pos_x(gen), random_pos_y(gen)), random_rotation(gen),
+                sf::Color(random_color_channel_value(gen),
+                          random_color_channel_value(gen),
+                          random_color_channel_value(gen)));
   }
 
   return boids;
@@ -79,84 +152,7 @@ void update_boids(Boids& boids, const sf::Time& dt, const sf::Window& window) {
   const sf::Vector2u& kWindowSize = window.getSize();
   const float kDeltaTimeSeconds = dt.asSeconds();
   for (auto& boid : boids) {
-    /** Update position */
-    {
-      sf::Transform rotation;
-      rotation.rotate(boid.angle);
-      const float kDeltaSpeed = boid.speed * kDeltaTimeSeconds;
-      boid.position += rotation.transformPoint(0, -kDeltaSpeed);
-      if (boid.position.x < 0) {
-        boid.position.x = kWindowSize.x;
-      }
-
-      if (boid.position.x > kWindowSize.x) {
-        boid.position.x = 0;
-      }
-
-      if (boid.position.y < 0) {
-        boid.position.y = kWindowSize.y;
-      }
-
-      if (boid.position.y > kWindowSize.y) {
-        boid.position.y = 0;
-      }
-    }
-
-    const std::vector<Boid> kLocalFlockmates = [&boids, &boid] {
-      std::vector<Boid> result;
-      std::copy_if(boids.begin(), boids.end(), std::back_inserter(result), [&boid](const auto& local_flockmate) {
-        return distance_2d(boid.position, local_flockmate.position) <
-               boid.kLocalFlockmateDetectionDistanceFactor * boid.size;
-      });
-      return result;
-    }();
-
-    if (kLocalFlockmates.size() == 1) {
-      continue;
-    }
-
-
-    /** Alignment */
-    {
-      /** Calculate average angle */
-      const float kLocalFlockmateAverageAngle =
-        std::accumulate(
-          kLocalFlockmates.begin(),
-          kLocalFlockmates.end(),
-          0.0f,
-          [&](float result, const auto& local_flockmate) {
-            return result + local_flockmate.angle / kLocalFlockmates.size();
-          }
-        );
-      boid.angle = kLocalFlockmateAverageAngle;
-    }
-
-    const sf::Vector2f& kLocalFlockmateCenterOfMass =
-      std::accumulate(
-        kLocalFlockmates.begin(),
-        kLocalFlockmates.end(),
-        sf::Vector2f(),
-        [&](auto result, const auto& local_flockmate) {
-          result.x += local_flockmate.position.x / kLocalFlockmates.size();
-          result.y += local_flockmate.position.y / kLocalFlockmates.size();
-          return result;
-        }
-      );
-
-    const float kBoidToCenterOfMassAngle =
-      rad2deg(std::atan2(kLocalFlockmateCenterOfMass.y, kLocalFlockmateCenterOfMass.x) -
-              std::atan2(boid.position.y, boid.position.x));
-    /** Cohesion */
-    if (distance_2d(boid.position, kLocalFlockmateCenterOfMass) >
-        boid.kLocalFlockmatesCohesionDistanceFactor * boid.size) {
-      boid.angle = kBoidToCenterOfMassAngle;
-    }
-
-    /** Separation */
-    if (distance_2d(boid.position, kLocalFlockmateCenterOfMass) <
-        boid.kLocalFlockmatesSeparationDistanceFactor * boid.size) {
-      boid.angle = kBoidToCenterOfMassAngle + 180;
-    }
+    boid.update(kDeltaTimeSeconds, boids, kWindowSize);
   }
 }
 
