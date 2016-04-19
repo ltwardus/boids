@@ -62,8 +62,12 @@ class Boid {
 
     /** Cohesion */
     const std::vector<Boid> kCohesionFlockmates = get_flockmates(boids, cohesion_distance());
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_int_distribution<> rotation_jitter(-5, 5);
     /** If at this point there is only one flockmate (this boid) then there is nothing to do */
     if (kCohesionFlockmates.size() == 1) {
+      rot_ += rotation_jitter(gen);
       return;
     }
     const sf::Vector2f& kCohesionFlockmateCenterOfMass = center_of_mass(kCohesionFlockmates);
@@ -93,7 +97,7 @@ class Boid {
           }
         );
 
-        rot_ = kAverageRotation;
+        rot_ = kAverageRotation + rotation_jitter(gen);
     } else if (kCohesionFlockmates.size() > 1) {
       const float kBoidToCenterOfMassRotation =
         rad2deg(std::atan2(kCohesionFlockmateCenterOfMass.y - pos_.y, kCohesionFlockmateCenterOfMass.x - pos_.x));
