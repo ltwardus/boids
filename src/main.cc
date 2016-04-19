@@ -17,6 +17,13 @@ T rad2deg(T rad) {
   return (rad * 180) / kPi<T>;
 }
 
+struct Predator {
+  sf::Vector2f position;
+  int size = 20;
+};
+
+using Predators = std::vector<Predator>;
+
 class Boid;
 using Boids = std::array<Boid, 40>;
 
@@ -32,11 +39,12 @@ class Boid {
   /**
    * Update boid.
    *
-   * /param dt Delta time in seconds.
    * /param boids All boids.
+   * /param predators Predators.
+   * /param dt Delta time in seconds.
    * /param window_size Window size.
    */
-  void update(float dt, const Boids& boids, const sf::Vector2u& window_size) {
+  void update(const Boids& boids, const Predators& predators, float dt, const sf::Vector2u& window_size) {
     /** Update position */
     {
       sf::Transform rotation;
@@ -60,14 +68,33 @@ class Boid {
       }
     }
 
+    /** Predators */
+    {
+      const Predators& kLocalPredators = get_local_predators(predators, cohesion_distance());
+      if (!kLocalPredators.empty()) {
+        const sf::Vector2f& kPreadtorsCenterOfMass = center_of_mass(kLocalPredators);
+        const float kBoidToCenterOfMassRotation =
+          rad2deg(std::atan2(kPreadtorsCenterOfMass.y - pos_.y,
+                             kPreadtorsCenterOfMass.x - pos_.x));
+
+        rot_ = kBoidToCenterOfMassRotation - 90;
+        /** Run away from the predator */
+        move_speed_ = predator_escape_move_speed_;
+        return;
+      } else {
+        /** No predator, decelerate if needed */
+        if (move_speed_ > default_move_speed_) {
+          move_speed_ -= predator_escape_move_speed_ * dt;
+        }
+
+        move_speed_= std::max(move_speed_, default_move_speed_);
+      }
+    }
+
     /** Cohesion */
     const std::vector<Boid> kCohesionFlockmates = get_flockmates(boids, cohesion_distance());
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> rotation_jitter(-5, 5);
     /** If at this point there is only one flockmate (this boid) then there is nothing to do */
     if (kCohesionFlockmates.size() == 1) {
-      rot_ += rotation_jitter(gen);
       return;
     }
     const sf::Vector2f& kCohesionFlockmateCenterOfMass = center_of_mass(kCohesionFlockmates);
@@ -85,7 +112,7 @@ class Boid {
         rad2deg(std::atan2(kSeparationFlockmateCenterOfMass.y - pos_.y,
                            kSeparationFlockmateCenterOfMass.x - pos_.x));
 
-      rot_ = kBoidToCenterOfMassRotation + 90 + 180;
+      rot_ = kBoidToCenterOfMassRotation - 90;
     } else if (kAlignmentFlockmates.size() > 1) {
       const float kAverageRotation =
         std::accumulate(
@@ -97,7 +124,7 @@ class Boid {
           }
         );
 
-        rot_ = kAverageRotation + rotation_jitter(gen);
+        rot_ = kAverageRotation;
     } else if (kCohesionFlockmates.size() > 1) {
       const float kBoidToCenterOfMassRotation =
         rad2deg(std::atan2(kCohesionFlockmateCenterOfMass.y - pos_.y, kCohesionFlockmateCenterOfMass.x - pos_.x));
@@ -135,6 +162,14 @@ class Boid {
     return size_ * kSeparationDistanceFactor;
   }
  private:
+  Predators get_local_predators(const Predators& predators, int distance) const {
+      Predators result;
+      std::copy_if(predators.begin(), predators.end(), std::back_inserter(result), [&](const auto& predator) {
+        return distance_2d(pos_, predator.position) < distance;
+      });
+      return result;
+  }
+
   template<class T>
   std::vector<Boid> get_flockmates(const T& boids, int distance) const {
       std::vector<Boid> result;
@@ -158,11 +193,26 @@ class Boid {
     );
   }
 
+  sf::Vector2f center_of_mass(const Predators& predators) const {
+    return std::accumulate(
+      predators.begin(),
+      predators.end(),
+      sf::Vector2f(),
+      [&](auto result, const auto& predator) {
+        result.x += predator.position.x / predators.size();
+        result.y += predator.position.y / predators.size();
+        return result;
+      }
+    );
+  }
+
   sf::Vector2f pos_;
   float rot_ = 0;
   sf::Color col_ = sf::Color::White;
   int size_ = 10;
-  int move_speed_ = 200;
+  float default_move_speed_ = 200;
+  float move_speed_ = 200;
+  float predator_escape_move_speed_ = 4 * default_move_speed_;
   int kSeparationDistanceFactor = 3;
   int kAlignmentDistanceFactor = 9;
   int kCohesionDistanceFactor = 14;
@@ -232,6 +282,17 @@ void draw_boids(const Boids& boids, sf::RenderWindow& window) {
   }
 }
 
+void draw_predators(const Predators& predators, sf::RenderWindow& window) {
+  for (const auto& predator : predators) {
+    const int kPredatorRadius = predator.size;
+    sf::CircleShape circle(kPredatorRadius);
+    circle.setOrigin(kPredatorRadius, kPredatorRadius);
+    circle.move(predator.position);
+    circle.setFillColor(sf::Color::Red);
+    window.draw(circle);
+  }
+}
+
 Boids generate_random_boids(const sf::Window& window) {
   static std::random_device rd;
   static std::mt19937 gen(rd());
@@ -252,11 +313,11 @@ Boids generate_random_boids(const sf::Window& window) {
   return boids;
 }
 
-void update_boids(Boids& boids, const sf::Time& dt, const sf::Window& window) {
+void update_boids(Boids& boids, const Predators& predators, const sf::Time& dt, const sf::Window& window) {
   const sf::Vector2u& kWindowSize = window.getSize();
   const float kDeltaTimeSeconds = dt.asSeconds();
   for (auto& boid : boids) {
-    boid.update(kDeltaTimeSeconds, boids, kWindowSize);
+    boid.update(boids, predators, kDeltaTimeSeconds, kWindowSize);
   }
 }
 
@@ -265,6 +326,7 @@ int main(int argc, char* argv[]) {
 
   sf::Clock clock;
   Boids boids = generate_random_boids(window);
+  Predators predators;
 
   while (window.isOpen()) {
     sf::Event event;
@@ -289,8 +351,18 @@ int main(int argc, char* argv[]) {
     const sf::Time& kDt = clock.getElapsedTime();
     clock.restart();
 
-    update_boids(boids, kDt, window);
+    Predators final_predators = predators;
+    {
+      Predator mouse_predator;
+      const sf::Vector2i& mouse_position = sf::Mouse::getPosition();
+      mouse_predator.position.x = mouse_position.x;
+      mouse_predator.position.y = mouse_position.y;
+      final_predators.push_back(mouse_predator);
+    }
+
+    update_boids(boids, final_predators, kDt, window);
     draw_boids(boids, window);
+    draw_predators(final_predators, window);
 
     window.display();
 
