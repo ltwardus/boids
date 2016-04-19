@@ -76,10 +76,31 @@ class Boid {
     const std::vector<Boid> kSeparationFlockmates = get_flockmates(kAlignmentFlockmates, separation_distance());
     const sf::Vector2f& kSeparationFlockmateCenterOfMass = center_of_mass(kSeparationFlockmates);
 
-    const float kBoidToCenterOfMassRotation =
-      rad2deg(std::atan2(kCohesionFlockmateCenterOfMass.y - pos_.y, kCohesionFlockmateCenterOfMass.x - pos_.x));
+    if (kSeparationFlockmates.size() > 1) {
+      const float kBoidToCenterOfMassRotation =
+        rad2deg(std::atan2(kSeparationFlockmateCenterOfMass.y - pos_.y,
+                           kSeparationFlockmateCenterOfMass.x - pos_.x));
 
-    rot_ = kBoidToCenterOfMassRotation + 90;
+      rot_ = kBoidToCenterOfMassRotation + 90 + 180;
+    } else if (kAlignmentFlockmates.size() > 1) {
+      const float kAverageRotation =
+        std::accumulate(
+          kAlignmentFlockmates.begin(),
+          kAlignmentFlockmates.end(),
+          0.0f,
+          [&](float result, const auto& boid) {
+            return result + boid.rot_ / kAlignmentFlockmates.size();
+          }
+        );
+
+        rot_ = kAverageRotation;
+    } else if (kCohesionFlockmates.size() > 1) {
+      const float kBoidToCenterOfMassRotation =
+        rad2deg(std::atan2(kCohesionFlockmateCenterOfMass.y - pos_.y, kCohesionFlockmateCenterOfMass.x - pos_.x));
+
+      rot_ = kBoidToCenterOfMassRotation + 90;
+    }
+
   }
 
   sf::Vector2f position() const {
