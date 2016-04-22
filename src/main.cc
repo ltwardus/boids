@@ -30,7 +30,11 @@ using Boids = std::array<Boid, 40>;
 class Boid {
  public:
   Boid() = default;
-  Boid(const sf::Vector2f& pos, float rot, const sf::Color& col) : pos_(pos), rot_(rot), col_(col) {}
+  Boid(const sf::Vector2f& pos, float rot, const sf::Color& col)
+    : pos_(pos),
+      rot_(rot),
+      target_rot_(rot),
+      col_(col) {}
   Boid(const Boid&) = default;
   Boid(Boid&&) = default;
   Boid& operator=(const Boid&) = default;
@@ -49,8 +53,8 @@ class Boid {
     {
       sf::Transform rotation;
       rotation.rotate(rot_);
-      const float kDeltaSpeed = move_speed_ * dt;
-      pos_ += rotation.transformPoint(0, -kDeltaSpeed);
+      const float kDeltaMoveSpeed = move_speed_ * dt;
+      pos_ += rotation.transformPoint(0, -kDeltaMoveSpeed);
       if (pos_.x < 0) {
         pos_.x = window_size.x;
       }
@@ -68,6 +72,39 @@ class Boid {
       }
     }
 
+
+    {
+      float temp_rot = rot_ + 360;
+      float temp_target_rot = target_rot_ + 360;
+      float rotation_direction = 1;
+      while(temp_rot >= 360) {
+        temp_rot -= 360;
+      }
+      while(temp_target_rot >= 360) {
+        temp_target_rot -= 360;
+      }
+
+      float rotation_delta = temp_target_rot - temp_rot;
+
+      while(rotation_delta < 0) {
+        rotation_delta += 360;
+      }
+
+      if (rotation_delta > 180) {
+        rotation_direction = -1;
+      }
+
+      rot_ += rotation_direction * rotation_speed_ * dt;
+    }
+
+    if (rot_ < -180) {
+      rot_ += 360;
+    }
+    if (rot_ > 179) {
+      rot_ -= 360;
+    }
+
+
     /** Predators */
     {
       const Predators& kLocalPredators = get_local_predators(predators, cohesion_distance());
@@ -77,9 +114,21 @@ class Boid {
           rad2deg(std::atan2(kPreadtorsCenterOfMass.y - pos_.y,
                              kPreadtorsCenterOfMass.x - pos_.x));
 
-        rot_ = kBoidToCenterOfMassRotation - 90;
+        target_rot_ = kBoidToCenterOfMassRotation - 90;
         /** Run away from the predator */
-        move_speed_ = predator_escape_move_speed_;
+        const float kFearFactor =
+          1 - std::min(1.0f, distance_2d(kPreadtorsCenterOfMass, pos_) / cohesion_distance());
+        const float kPredatorMoveSpeed =
+          std::min(default_move_speed_ + (predator_escape_move_speed_ * kFearFactor), predator_escape_move_speed_);
+
+        move_speed_ = std::max(move_speed_, kPredatorMoveSpeed);
+
+        const float kPredatorRotationSpeed =
+          std::min(default_move_speed_ + (predator_escape_rotation_speed_ * kFearFactor),
+                   predator_escape_rotation_speed_);
+
+        rotation_speed_ = std::max(rotation_speed_, kPredatorRotationSpeed);
+
         return;
       } else {
         /** No predator, decelerate if needed */
@@ -88,13 +137,25 @@ class Boid {
         }
 
         move_speed_= std::max(move_speed_, default_move_speed_);
+
+        if (rotation_speed_ > default_rotation_speed_) {
+          rotation_speed_ -= predator_escape_rotation_speed_ * dt;
+        }
+
+        rotation_speed_= std::max(rotation_speed_, default_rotation_speed_);
       }
     }
+
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    static std::uniform_int_distribution<> random_rotation_jitter(-90, 90);
+
 
     /** Cohesion */
     const std::vector<Boid> kCohesionFlockmates = get_flockmates(boids, cohesion_distance());
     /** If at this point there is only one flockmate (this boid) then there is nothing to do */
     if (kCohesionFlockmates.size() == 1) {
+      target_rot_ += random_rotation_jitter(gen);
       return;
     }
     const sf::Vector2f& kCohesionFlockmateCenterOfMass = center_of_mass(kCohesionFlockmates);
@@ -112,7 +173,7 @@ class Boid {
         rad2deg(std::atan2(kSeparationFlockmateCenterOfMass.y - pos_.y,
                            kSeparationFlockmateCenterOfMass.x - pos_.x));
 
-      rot_ = kBoidToCenterOfMassRotation - 90;
+      target_rot_ = kBoidToCenterOfMassRotation - 90;
     } else if (kAlignmentFlockmates.size() > 1) {
       const float kAverageRotation =
         std::accumulate(
@@ -124,12 +185,12 @@ class Boid {
           }
         );
 
-        rot_ = kAverageRotation;
+        target_rot_ = kAverageRotation + random_rotation_jitter(gen);
     } else if (kCohesionFlockmates.size() > 1) {
       const float kBoidToCenterOfMassRotation =
         rad2deg(std::atan2(kCohesionFlockmateCenterOfMass.y - pos_.y, kCohesionFlockmateCenterOfMass.x - pos_.x));
 
-      rot_ = kBoidToCenterOfMassRotation + 90;
+      target_rot_ = kBoidToCenterOfMassRotation + 90;
     }
 
   }
@@ -165,7 +226,7 @@ class Boid {
   Predators get_local_predators(const Predators& predators, int distance) const {
       Predators result;
       std::copy_if(predators.begin(), predators.end(), std::back_inserter(result), [&](const auto& predator) {
-        return distance_2d(pos_, predator.position) < distance;
+        return distance_2d(pos_, predator.position) < distance + predator.size;
       });
       return result;
   }
@@ -208,11 +269,15 @@ class Boid {
 
   sf::Vector2f pos_;
   float rot_ = 0;
+  float target_rot_ = 0;
   sf::Color col_ = sf::Color::White;
   int size_ = 10;
-  float default_move_speed_ = 200;
-  float move_speed_ = 200;
+  float default_move_speed_ = 300;
+  float move_speed_ = default_move_speed_;
   float predator_escape_move_speed_ = 4 * default_move_speed_;
+  float default_rotation_speed_ = 360;
+  float rotation_speed_ = default_rotation_speed_;
+  float predator_escape_rotation_speed_ = 4 * default_rotation_speed_;
   int kSeparationDistanceFactor = 3;
   int kAlignmentDistanceFactor = 9;
   int kCohesionDistanceFactor = 14;
@@ -354,7 +419,7 @@ int main(int argc, char* argv[]) {
     Predators final_predators = predators;
     {
       Predator mouse_predator;
-      const sf::Vector2i& mouse_position = sf::Mouse::getPosition();
+      const sf::Vector2i& mouse_position = sf::Mouse::getPosition(window);
       mouse_predator.position.x = mouse_position.x;
       mouse_predator.position.y = mouse_position.y;
       final_predators.push_back(mouse_predator);
