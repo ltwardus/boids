@@ -3,8 +3,15 @@
 #include <iostream>
 #include <SFML/Graphics.hpp>
 
+#include "arial_font.h"
+
 template<class T>
 constexpr T kPi = T(3.1415926535897932385);
+
+constexpr unsigned int kAddRemoveBoidsCount = 10;
+constexpr unsigned int kStartupBoidCount = 40;
+
+bool debug_boid_drawing = false;
 
 template<class T>
 T distance_2d(const sf::Vector2<T>& a, const sf::Vector2<T>& b) {
@@ -25,7 +32,7 @@ struct Predator {
 using Predators = std::vector<Predator>;
 
 class Boid;
-using Boids = std::array<Boid, 40>;
+using Boids = std::vector<Boid>;
 
 class Boid {
  public:
@@ -107,7 +114,8 @@ class Boid {
 
     /** Predators */
     {
-      const Predators& kLocalPredators = get_local_predators(predators, cohesion_distance());
+      const int kPredatorDetectionDistance = alignment_distance();
+      const Predators& kLocalPredators = get_local_predators(predators, kPredatorDetectionDistance);
       if (!kLocalPredators.empty()) {
         const sf::Vector2f& kPreadtorsCenterOfMass = center_of_mass(kLocalPredators);
         const float kBoidToCenterOfMassRotation =
@@ -117,7 +125,7 @@ class Boid {
         target_rot_ = kBoidToCenterOfMassRotation - 90;
         /** Run away from the predator */
         const float kFearFactor =
-          1 - std::min(1.0f, distance_2d(kPreadtorsCenterOfMass, pos_) / cohesion_distance());
+          1 - std::min(1.0f, distance_2d(kPreadtorsCenterOfMass, pos_) / kPredatorDetectionDistance);
         const float kPredatorMoveSpeed =
           std::min(default_move_speed_ + (predator_escape_move_speed_ * kFearFactor), predator_escape_move_speed_);
 
@@ -148,7 +156,7 @@ class Boid {
 
     static std::random_device rd;
     static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> random_rotation_jitter(-90, 90);
+    static std::uniform_int_distribution<> random_rotation_jitter(-45, 45);
 
 
     /** Cohesion */
@@ -272,53 +280,55 @@ class Boid {
   float target_rot_ = 0;
   sf::Color col_ = sf::Color::White;
   int size_ = 10;
-  float default_move_speed_ = 300;
+  float default_move_speed_ = 200;
   float move_speed_ = default_move_speed_;
   float predator_escape_move_speed_ = 4 * default_move_speed_;
   float default_rotation_speed_ = 360;
   float rotation_speed_ = default_rotation_speed_;
   float predator_escape_rotation_speed_ = 4 * default_rotation_speed_;
-  int kSeparationDistanceFactor = 3;
-  int kAlignmentDistanceFactor = 9;
-  int kCohesionDistanceFactor = 14;
+  int kSeparationDistanceFactor = 2;
+  int kAlignmentDistanceFactor = 7;
+  int kCohesionDistanceFactor = 20;
 };
 
-void draw_boids(const Boids& boids, sf::RenderWindow& window) {
+void draw_boids(const Boids& boids, sf::RenderWindow& window, bool debug_boid_drawing) {
   for (const auto& boid : boids) {
-    /** Cohesion distance */
-    {
-      const int kBoidCohesionRadius = boid.cohesion_distance();
-      sf::CircleShape circle(kBoidCohesionRadius);
-      circle.setOrigin(kBoidCohesionRadius, kBoidCohesionRadius);
-      circle.move(boid.position());
-      sf::Color color = boid.color();
-      color.a = 32;
-      circle.setFillColor(color);
-      window.draw(circle);
-    }
+    if  (debug_boid_drawing) {
+      /** Cohesion distance */
+      {
+        const int kBoidCohesionRadius = boid.cohesion_distance();
+        sf::CircleShape circle(kBoidCohesionRadius);
+        circle.setOrigin(kBoidCohesionRadius, kBoidCohesionRadius);
+        circle.move(boid.position());
+        sf::Color color = boid.color();
+        color.a = 32;
+        circle.setFillColor(color);
+        window.draw(circle);
+      }
 
-    /** Alignment distance */
-    {
-      const int kBoidAlignmentRadius = boid.alignment_distance();
-      sf::CircleShape circle(kBoidAlignmentRadius);
-      circle.setOrigin(kBoidAlignmentRadius, kBoidAlignmentRadius);
-      circle.move(boid.position());
-      sf::Color color = boid.color();
-      color.a = 48;
-      circle.setFillColor(color);
-      window.draw(circle);
-    }
+      /** Alignment distance */
+      {
+        const int kBoidAlignmentRadius = boid.alignment_distance();
+        sf::CircleShape circle(kBoidAlignmentRadius);
+        circle.setOrigin(kBoidAlignmentRadius, kBoidAlignmentRadius);
+        circle.move(boid.position());
+        sf::Color color = boid.color();
+        color.a = 48;
+        circle.setFillColor(color);
+        window.draw(circle);
+      }
 
-    /** Separation distance */
-    {
-      const int kBoidSeparationRadius = boid.separation_distance();
-      sf::CircleShape circle(kBoidSeparationRadius);
-      circle.setOrigin(kBoidSeparationRadius, kBoidSeparationRadius);
-      circle.move(boid.position());
-      sf::Color color = boid.color();
-      color.a = 48;
-      circle.setFillColor(color);
-      window.draw(circle);
+      /** Separation distance */
+      {
+        const int kBoidSeparationRadius = boid.separation_distance();
+        sf::CircleShape circle(kBoidSeparationRadius);
+        circle.setOrigin(kBoidSeparationRadius, kBoidSeparationRadius);
+        circle.move(boid.position());
+        sf::Color color = boid.color();
+        color.a = 48;
+        circle.setFillColor(color);
+        window.draw(circle);
+      }
     }
 
     {
@@ -358,7 +368,7 @@ void draw_predators(const Predators& predators, sf::RenderWindow& window) {
   }
 }
 
-Boids generate_random_boids(const sf::Window& window) {
+Boid randomize_boids(const sf::Window& window) {
   static std::random_device rd;
   static std::mt19937 gen(rd());
   static std::uniform_int_distribution<> random_rotation(-180, 179);
@@ -366,16 +376,35 @@ Boids generate_random_boids(const sf::Window& window) {
   const sf::Vector2u& window_size = window.getSize();
   std::uniform_int_distribution<> random_pos_x(0, window_size.x);
   std::uniform_int_distribution<> random_pos_y(0, window_size.y);
-  Boids boids;
 
+  return Boid(sf::Vector2f(random_pos_x(gen), random_pos_y(gen)),
+              random_rotation(gen),
+              sf::Color(random_color_channel_value(gen),
+                        random_color_channel_value(gen),
+                        random_color_channel_value(gen)));
+}
+
+Boids randomize_boids(Boids& boids, const sf::Window& window) {
   for (auto& boid : boids) {
-    boid = Boid(sf::Vector2f(random_pos_x(gen), random_pos_y(gen)), random_rotation(gen),
-                sf::Color(random_color_channel_value(gen),
-                          random_color_channel_value(gen),
-                          random_color_channel_value(gen)));
+    boid = randomize_boids(window);
   }
 
   return boids;
+}
+
+void add_boids(Boids& boids, unsigned int count, const sf::Window& window) {
+  boids.reserve(boids.size() + count);
+  for (unsigned int i = 0; i < count; ++i) {
+    boids.push_back(randomize_boids(window));
+  }
+}
+
+void remove_boids(Boids& boids, unsigned int count) {
+  if (boids.size() > 1) {
+    const Boids::size_type kNumberOfBoidsToRemove = std::min(boids.size(), static_cast<Boids::size_type>(count));
+
+    Boids(boids.begin() + kNumberOfBoidsToRemove, boids.end()).swap(boids);
+  }
 }
 
 void update_boids(Boids& boids, const Predators& predators, const sf::Time& dt, const sf::Window& window) {
@@ -387,11 +416,25 @@ void update_boids(Boids& boids, const Predators& predators, const sf::Time& dt, 
 }
 
 int main(int argc, char* argv[]) {
+  sf::Font font;
+  if (!font.loadFromMemory(kArialFont.data(), kArialFont.size())) {
+    throw std::runtime_error("Cannot load font");
+  }
+
   sf::RenderWindow window(sf::VideoMode(800, 600), "Boids");
 
   sf::Clock clock;
-  Boids boids = generate_random_boids(window);
+  Boids boids(kStartupBoidCount);
+  randomize_boids(boids, window);
   Predators predators;
+
+  sf::Text help_text(
+      std::string("Help:\n") +
+        "r : randomize boids\n" +
+        "+ : add " + std::to_string(kAddRemoveBoidsCount) + " boids\n" +
+        "- : remove " + std::to_string(kAddRemoveBoidsCount) + " boids\n" +
+        "d : on/off debug boid drawing\n",
+      font);
 
   while (window.isOpen()) {
     sf::Event event;
@@ -405,9 +448,27 @@ int main(int argc, char* argv[]) {
       }
 
       if (event.type == sf::Event::KeyPressed) {
-        if (event.key.code == sf::Keyboard::R) {
-          boids = generate_random_boids(window);
-        }
+        switch(event.key.code) {
+          case sf::Keyboard::R: {
+            randomize_boids(boids, window);
+            break;
+          }
+          case sf::Keyboard::Add: {
+            add_boids(boids, kAddRemoveBoidsCount, window);
+            break;
+          }
+          case sf::Keyboard::Subtract: {
+            remove_boids(boids, kAddRemoveBoidsCount);
+            break;
+          }
+          case sf::Keyboard::D: {
+            debug_boid_drawing = !debug_boid_drawing;
+            break;
+          }
+          default: {
+            break;
+          }
+        };
       }
     }
 
@@ -426,8 +487,10 @@ int main(int argc, char* argv[]) {
     }
 
     update_boids(boids, final_predators, kDt, window);
-    draw_boids(boids, window);
+    draw_boids(boids, window, debug_boid_drawing);
     draw_predators(final_predators, window);
+
+    window.draw(help_text);
 
     window.display();
 
