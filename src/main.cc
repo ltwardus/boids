@@ -9,7 +9,7 @@ template<class T>
 constexpr T kPi = T(3.1415926535897932385);
 
 constexpr unsigned int kAddRemoveBoidsCount = 10;
-constexpr unsigned int kStartupBoidCount = 40;
+constexpr unsigned int kStartupBoidCount = 80;
 
 bool debug_boid_drawing = false;
 
@@ -421,7 +421,8 @@ int main(int argc, char* argv[]) {
     throw std::runtime_error("Cannot load font");
   }
 
-  sf::RenderWindow window(sf::VideoMode(800, 600), "Boids");
+  sf::RenderWindow window(sf::VideoMode(1024, 768), "Boids");
+  window.setMouseCursorVisible(false);
 
   sf::Clock clock;
   Boids boids(kStartupBoidCount);
@@ -430,6 +431,7 @@ int main(int argc, char* argv[]) {
 
   sf::Text help_text(
       std::string("Help:\n") +
+        "Move the mouse to scare the boids\n" +
         "r : randomize boids\n" +
         "+ : add " + std::to_string(kAddRemoveBoidsCount) + " boids\n" +
         "- : remove " + std::to_string(kAddRemoveBoidsCount) + " boids\n" +
