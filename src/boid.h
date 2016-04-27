@@ -87,6 +87,8 @@ class Boid {
    */
   bool handle_predators(const Predators& predators, float dt);
 
+  void apply_rotation_jitter_if_needed(float dt);
+
   static const Config kConfig_;
 
   sf::Vector2f pos_;
@@ -95,5 +97,6 @@ class Boid {
   sf::Color col_ = sf::Color::White;
   float move_speed_ = kConfig_.kDefaultMoveSpeed;
   float rotation_speed_ = kConfig_.kDefaultRotationSpeed;
+  float last_time_rotation_jitter_applied_accumulator = 0;
 };
 

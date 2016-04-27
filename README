@@ -4,4 +4,4 @@ Building:
 Use cmake and then just "make".
 
 Usage:
-Go to the build directory and type "./boids" for help.
+Go to the build directory and type "./boids".

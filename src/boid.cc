@@ -56,16 +56,13 @@ void Boid::update(const Boids& boids, const Predators& predators, float dt, cons
   }
 
   /** No predators, perform normal tasks */
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> random_rotation_jitter(-45, 45);
-
 
   /** Cohesion */
   const std::vector<Boid> kCohesionFlockmates = get_flockmates(boids, cohesion_distance());
   /** If at this point there is only one flockmate (this boid) then there is nothing to do */
   if (kCohesionFlockmates.size() == 1) {
-    target_rot_ = constraint_angle_0_360(target_rot_ + random_rotation_jitter(gen));
+    target_rot_ = constraint_angle_0_360(target_rot_);
+    apply_rotation_jitter_if_needed(dt);
     return;
   }
   const sf::Vector2f& kCohesionFlockmateCenterOfMass = center_of_mass(kCohesionFlockmates);
@@ -103,7 +100,8 @@ void Boid::update(const Boids& boids, const Predators& predators, float dt, cons
 
         return rad2deg(std::atan2(std::get<0>(sin_cos_sum), std::get<1>(sin_cos_sum)));
       }();
-    target_rot_ = constraint_angle_0_360(kAverageRotation + random_rotation_jitter(gen));
+    target_rot_ = constraint_angle_0_360(kAverageRotation);
+    apply_rotation_jitter_if_needed(dt);
   } else if (kCohesionFlockmates.size() > 1) {
     const float kBoidToCenterOfMassRotation =
       rad2deg(std::atan2(kCohesionFlockmateCenterOfMass.y - pos_.y, kCohesionFlockmateCenterOfMass.x - pos_.x));
@@ -204,4 +202,17 @@ bool Boid::handle_predators(const Predators& predators, float dt) {
   }
 
   return false;
+}
+
+void Boid::apply_rotation_jitter_if_needed(float dt) {
+  static std::random_device rd;
+  static std::mt19937 gen(rd());
+  static std::uniform_int_distribution<> random_rotation_jitter(-45, 45);
+  last_time_rotation_jitter_applied_accumulator += dt;
+
+  /** For now always apply jitter */
+  if (last_time_rotation_jitter_applied_accumulator > 0) {
+    target_rot_ = constraint_angle_0_360(target_rot_ + random_rotation_jitter(gen));
+    last_time_rotation_jitter_applied_accumulator = 0;
+  }
 }
