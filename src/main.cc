@@ -1,6 +1,5 @@
 #include <array>
 #include <random>
-#include <iostream>
 #include <SFML/Graphics.hpp>
 
 #include "arial_font.h"
@@ -14,7 +13,7 @@ constexpr unsigned int kStartupBoidCount = 80;
 Boid randomize_boids(const sf::Window& window) {
   static std::random_device rd;
   static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> random_rotation(-180, 179);
+  static std::uniform_int_distribution<> random_rotation(0, 359);
   static std::uniform_int_distribution<> random_color_channel_value(50, 255);
   const sf::Vector2u& window_size = window.getSize();
   std::uniform_int_distribution<> random_pos_x(0, window_size.x);

@@ -2,7 +2,6 @@
 
 const Boid::Config Boid::kConfig_ = {};
 
-
 void Boid::update(const Boids& boids, const Predators& predators, float dt, const sf::Vector2u& window_size) {
   /** Update position */
   {
@@ -27,19 +26,14 @@ void Boid::update(const Boids& boids, const Predators& predators, float dt, cons
     }
   }
 
+  /** Normalize rotations before calculation */
+  rot_ = constraint_angle_0_360(rot_);
+  target_rot_ = constraint_angle_0_360(target_rot_);
 
   {
-    float temp_rot = rot_ + 360;
-    float temp_target_rot = target_rot_ + 360;
     float rotation_direction = 1;
-    while(temp_rot >= 360) {
-      temp_rot -= 360;
-    }
-    while(temp_target_rot >= 360) {
-      temp_target_rot -= 360;
-    }
 
-    float rotation_delta = temp_target_rot - temp_rot;
+    float rotation_delta = target_rot_ - rot_;
 
     while(rotation_delta < 0) {
       rotation_delta += 360;
@@ -52,13 +46,9 @@ void Boid::update(const Boids& boids, const Predators& predators, float dt, cons
     rot_ += rotation_direction * rotation_speed_ * dt;
   }
 
-  if (rot_ < -180) {
-    rot_ += 360;
-  }
-  if (rot_ > 179) {
-    rot_ -= 360;
-  }
-
+  /** Normalize rotations after calculations */
+  rot_ = constraint_angle_0_360(rot_);
+  target_rot_ = constraint_angle_0_360(target_rot_);
 
   /** Predators */
   if (handle_predators(predators, dt)) {
@@ -75,7 +65,7 @@ void Boid::update(const Boids& boids, const Predators& predators, float dt, cons
   const std::vector<Boid> kCohesionFlockmates = get_flockmates(boids, cohesion_distance());
   /** If at this point there is only one flockmate (this boid) then there is nothing to do */
   if (kCohesionFlockmates.size() == 1) {
-    target_rot_ += random_rotation_jitter(gen);
+    target_rot_ = constraint_angle_0_360(target_rot_ + random_rotation_jitter(gen));
     return;
   }
   const sf::Vector2f& kCohesionFlockmateCenterOfMass = center_of_mass(kCohesionFlockmates);
@@ -93,24 +83,32 @@ void Boid::update(const Boids& boids, const Predators& predators, float dt, cons
       rad2deg(std::atan2(kSeparationFlockmateCenterOfMass.y - pos_.y,
                          kSeparationFlockmateCenterOfMass.x - pos_.x));
 
-    target_rot_ = kBoidToCenterOfMassRotation - 90;
+    target_rot_ = constraint_angle_0_360(kBoidToCenterOfMassRotation - 90);
   } else if (kAlignmentFlockmates.size() > 1) {
     const float kAverageRotation =
-      std::accumulate(
-        kAlignmentFlockmates.begin(),
-        kAlignmentFlockmates.end(),
-        0.0f,
-        [&](float result, const auto& boid) {
-          return result + boid.rot_ / kAlignmentFlockmates.size();
-        }
-      );
+      [&]{
+        using SinCosSum = std::tuple<float, float>;
+        SinCosSum sin_cos_sum =
+          std::accumulate(
+            kAlignmentFlockmates.begin(),
+            kAlignmentFlockmates.end(),
+            SinCosSum(0.0f, 0.0f),
+            [&](SinCosSum result, const auto& boid) {
+              const float kRad = deg2rad(boid.rot_);
+              std::get<0>(result) += std::sin(kRad);
+              std::get<1>(result) += std::cos(kRad);
+              return result;
+            }
+          );
 
-      target_rot_ = kAverageRotation + random_rotation_jitter(gen);
+        return rad2deg(std::atan2(std::get<0>(sin_cos_sum), std::get<1>(sin_cos_sum)));
+      }();
+    target_rot_ = constraint_angle_0_360(kAverageRotation + random_rotation_jitter(gen));
   } else if (kCohesionFlockmates.size() > 1) {
     const float kBoidToCenterOfMassRotation =
       rad2deg(std::atan2(kCohesionFlockmateCenterOfMass.y - pos_.y, kCohesionFlockmateCenterOfMass.x - pos_.x));
 
-    target_rot_ = kBoidToCenterOfMassRotation + 90;
+    target_rot_ = constraint_angle_0_360(kBoidToCenterOfMassRotation + 90);
   }
 
 }
