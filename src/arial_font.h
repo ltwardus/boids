@@ -1,3 +1,5 @@
+#pragma once
+
 #include <array>
 
 const std::array<unsigned char, 275572> kArialFont = {
