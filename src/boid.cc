@@ -1,5 +1,7 @@
 #include "boid.h"
 
+#include <random>
+
 const Boid::Config Boid::kConfig_ = {};
 
 void Boid::update(const Boids& boids, const Predators& predators, float dt, const sf::Vector2u& window_size) {

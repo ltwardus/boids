@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <numeric>
 #include <SFML/Graphics.hpp>
 #include "predator.h"
 #include "utils.h"

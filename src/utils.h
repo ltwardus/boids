@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SFML/System.hpp>
+#include <cmath>
 
 template<class T>
 constexpr T kPi = T(3.1415926535897932385);
