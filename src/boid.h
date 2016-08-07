@@ -17,10 +17,6 @@ class Boid {
       rot_(rot),
       target_rot_(rot),
       col_(col) {}
-  Boid(const Boid&) = default;
-  Boid(Boid&&) = default;
-  Boid& operator=(const Boid&) = default;
-  Boid& operator=(Boid&&) = default;
 
   /**
    * Update boid.
