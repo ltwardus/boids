@@ -8,4 +8,4 @@ find_package(SFML 2 COMPONENTS system graphics window REQUIRED)
 include_directories(${SFML_INCLUDE_DIR})
 
 add_executable(boids src/main.cc src/boid.cc src/draw.cc)
-target_link_libraries(boids ${SFML_LIBRARIES})
+target_link_libraries(boids sfml-graphics)
